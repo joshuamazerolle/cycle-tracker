@@ -16,7 +16,8 @@
   body { margin:0 auto; padding:16px; max-width:480px; font-family:-apple-system,system-ui,sans-serif; background:var(--bg); color:var(--text); }
   .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:14px; }
   .status { display:flex; gap:14px; align-items:center; }
-  .dot { width:64px; height:64px; border-radius:50%; flex:none; display:grid; place-items:center; font-weight:700; font-size:22px; color:#1c1917; background:var(--line); }
+  .dot { width:68px; height:68px; border-radius:50%; flex:none; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:700; font-size:24px; line-height:1; color:#1c1917; background:var(--line); }
+  .dot small { font-size:10px; font-weight:600; margin-top:3px; letter-spacing:.2px; }
   h1 { font-size:19px; margin:0 0 4px; }
   .muted { color:var(--muted); font-size:14px; }
   .row { display:flex; gap:8px; align-items:center; }
@@ -124,11 +125,26 @@
 
   function render(v) {
     const s = v.status;
-    $('headline').textContent = s.headline;
-    $('detail').textContent = s.detail || '';
-    $('dot').style.background = s.empty ? '' : s.color;
-    $('dot').textContent = s.empty ? '–' : s.day;
-    $('dot').style.color = s.onPeriod ? '#fff' : '';
+    if (s.empty) {
+      $('headline').textContent = s.headline; $('detail').textContent = '';
+      $('dot').style.background = ''; $('dot').textContent = '–';
+    } else {
+      // Circle: days until her period. Headline: which day of her cycle she's on.
+      const until = Math.round((Date.parse(s.nextStart) - Date.parse(v.today)) / 864e5);
+      const fmt = k => new Date(k + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      let num, cap;
+      if (s.onPeriod) { num = s.day; cap = 'period day'; }
+      else if (s.late) { num = s.late; cap = s.late === 1 ? 'day late' : 'days late'; }
+      else if (until === 0) { num = 0; cap = 'due today'; }
+      else { num = until; cap = until === 1 ? 'day left' : 'days left'; }
+      $('dot').innerHTML = num + '<small>' + cap + '</small>';
+      $('dot').style.background = s.color;
+      $('dot').style.color = s.onPeriod ? '#fff' : '';
+      $('headline').textContent = 'Cycle day ' + s.day + ' of ~' + s.avgCycle;
+      const when = s.onPeriod ? 'Period day ' + s.day : (s.late ? 'Period was due ' : 'Period expected ') + fmt(s.nextStart);
+      const mood = s.logged !== null ? 'Mood ' + s.logged + '/100' : 'Mood forecast ' + s.expected + '/100';
+      $('detail').textContent = [s.onPeriod ? null : s.phase, when, mood].filter(Boolean).join(' · ');
+    }
     $('month').textContent = new Date(y, m - 1, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
     const cal = $('cal'); cal.innerHTML = '';
     'SMTWTFS'.split('').forEach(d => cal.insertAdjacentHTML('beforeend', `<div class="dow">${d}</div>`));
