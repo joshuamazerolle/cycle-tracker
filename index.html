@@ -107,12 +107,19 @@
 
   function showMood() { const v = +$('mood').value; $('moodval').textContent = v; $('moodval').style.background = color(v); }
   function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.opacity = 1; setTimeout(() => t.style.opacity = 0, 2200); }
-  async function call(fn, params) {
+  async function call(fn, params, tries = 3) {
     const q = new URLSearchParams(Object.assign({ fn, k: KEY }, params));
-    const r = await fetch(API + '?' + q, { credentials: 'omit' });
-    const j = await r.json();
-    if (!j.ok) throw new Error(j.error || 'Something went wrong');
-    return j.data;
+    for (let i = 1; ; i++) {
+      try {
+        const r = await fetch(API + '?' + q, { credentials: 'omit' });
+        const j = await r.json();
+        if (!j.ok) throw Object.assign(new Error(j.error || 'Something went wrong'), { final: true });
+        return j.data;
+      } catch (e) {
+        if (e.final || i >= tries) throw e.final ? e : new Error('Could not reach the tracker. Check your connection and try again.');
+        await new Promise(res => setTimeout(res, 800 * i)); // Google occasionally hiccups; try again
+      }
+    }
   }
   function load() { call('getView', { y, m }).then(render).catch(e => toast(e.message)); }
   function shift(d) { m += d; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; } load(); }
