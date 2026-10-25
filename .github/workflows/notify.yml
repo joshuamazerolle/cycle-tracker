@@ -1,0 +1,73 @@
+# Sends the daily cycle notifications through ntfy.
+# Google's servers often can't reach ntfy.sh, so GitHub does the sending:
+# every 15 minutes in the morning it asks the Apps Script what's due, sends it, and marks it sent.
+# The Apps Script decides what's due (nothing before 7 AM Central, and each phone only once a day).
+name: Daily notification
+
+on:
+  schedule:
+    - cron: '*/15 11-14 * * *'   # 11:00–14:45 UTC = about 6–9:45 AM Central (covers daylight saving)
+    - cron: '0 6 1 * *'           # monthly keep-alive (GitHub pauses schedules after 60 quiet days)
+  workflow_dispatch:              # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: write                 # only used by the monthly keep-alive commit
+
+jobs:
+  notify:
+    if: github.event.schedule != '0 6 1 * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send anything that's due
+        env:
+          API: https://script.google.com/macros/s/AKfycbzPcbrQxOND0asm3en8ku7Ld_fZ_foMFpK_nYCdUccCz3UarTSdX3EPFLl4C4sEmh8i/exec
+          KEY: ${{ secrets.CYCLE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, time, urllib.parse, urllib.request
+          api, key = os.environ["API"], os.environ["KEY"]
+          if not key:
+              sys.exit("CYCLE_KEY secret is missing")
+
+          def call(fn, **params):
+              q = urllib.parse.urlencode(dict(fn=fn, k=key, **params))
+              for attempt in range(3):
+                  try:
+                      with urllib.request.urlopen(f"{api}?{q}", timeout=30) as r:
+                          j = json.load(r)
+                      if not j.get("ok"):
+                          sys.exit(f"{fn} failed: {j.get('error')}")
+                      return j["data"]
+                  except (OSError, ValueError) as e:
+                      print(f"{fn} attempt {attempt + 1} failed: {e}")
+                      time.sleep(5)
+              sys.exit(f"{fn} unreachable")
+
+          due = call("pending")
+          print(f"{len(due)} message(s) due")
+          for m in due:
+              req = urllib.request.Request(
+                  "https://ntfy.sh/" + urllib.parse.quote(m["topic"]),
+                  data=m["body"].encode("utf-8"),
+                  headers={"Title": m["title"].encode("utf-8").decode("latin-1"),
+                           "Tags": m["tags"], "Click": m["click"]},
+                  method="POST")
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  ok = r.status < 300
+              if ok:
+                  call("markSent", topic=m["topic"])
+                  print("sent one")
+          PY
+
+  keepalive:
+    if: github.event.schedule == '0 6 1 * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep the schedule active
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "Monthly keep-alive"
+          git push
