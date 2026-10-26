@@ -6,7 +6,8 @@ name: Daily notification
 
 on:
   schedule:
-    - cron: '*/15 11-14 * * *'   # 11:00–14:45 UTC = about 6–9:45 AM Central (covers daylight saving)
+    - cron: '*/15 11-23 * * *'   # 11:00 UTC onward = from about 6 AM Central (covers daylight saving)
+    - cron: '*/15 0-3 * * *'     # ...until about 9:45 PM Central; runs after the day's send do nothing
     - cron: '0 6 1 * *'           # monthly keep-alive (GitHub pauses schedules after 60 quiet days)
   workflow_dispatch:              # lets you run it by hand from the Actions tab
 
